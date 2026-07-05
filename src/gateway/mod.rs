@@ -12,6 +12,7 @@ use tokio_tungstenite::{
     connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
 };
 use tracing::{debug, error, info, warn};
+use crate::http::HttpClient;
 
 pub use opcodes::OpCode;
 pub use payloads::*;
@@ -25,10 +26,11 @@ pub struct Gateway {
     sequence: Arc<Mutex<Option<u64>>>,
     heartbeat_interval: Arc<Mutex<Option<u64>>>,
     event_handler: Arc<dyn EventHandler>,
+    http: Arc<HttpClient>
 }
 
 impl Gateway {
-    pub fn new(token: String, event_handler: Arc<dyn EventHandler>) -> Self {
+    pub fn new(token: String, event_handler: Arc<dyn EventHandler>, http: Arc<HttpClient>) -> Self {
         Self {
             ws: Arc::new(Mutex::new(None)),
             token,
@@ -36,6 +38,7 @@ impl Gateway {
             sequence: Arc::new(Mutex::new(None)),
             heartbeat_interval: Arc::new(Mutex::new(None)),
             event_handler,
+            http
         }
     }
 
@@ -219,7 +222,6 @@ impl Gateway {
     async fn handle_event(&self, event_type: &str, data: &serde_json::Value) -> Result<()> {
         debug!("Received event: {}", event_type);
 
-        // Call raw handler
         self.event_handler.raw(data.clone()).await;
 
         match event_type {
@@ -230,17 +232,17 @@ impl Gateway {
                         *session_lock = Some(session_id.to_string());
                     }
                     info!("Client is ready!");
-                    self.event_handler.ready(user).await;
+                    self.event_handler.ready(self.http.clone(), user).await;
                 }
             }
             "MESSAGE_CREATE" => {
                 if let Ok(message) = serde_json::from_value(data.clone()) {
-                    self.event_handler.message_create(message).await;
+                    self.event_handler.message_create(self.http.clone(), message).await;
                 }
             }
             "MESSAGE_UPDATE" => {
                 if let Ok(new_message) = serde_json::from_value(data.clone()) {
-                    self.event_handler.message_update(None, new_message).await;
+                    self.event_handler.message_update(self.http.clone(), None, new_message).await;
                 }
             }
             "MESSAGE_DELETE" => {
@@ -249,6 +251,7 @@ impl Gateway {
                     data["id"].as_str()
                 ) {
                     self.event_handler.message_delete(
+                        self.http.clone(),
                         channel_id.into(),
                         message_id.into()
                     ).await;
@@ -256,27 +259,27 @@ impl Gateway {
             }
             "GUILD_CREATE" => {
                 if let Ok(guild) = serde_json::from_value(data.clone()) {
-                    self.event_handler.guild_create(guild).await;
+                    self.event_handler.guild_create(self.http.clone(), guild).await;
                 }
             }
             "GUILD_DELETE" => {
                 if let Some(guild_id) = data["id"].as_str() {
-                    self.event_handler.guild_delete(guild_id.into()).await;
+                    self.event_handler.guild_delete(self.http.clone(), guild_id.into()).await;
                 }
             }
             "CHANNEL_CREATE" => {
                 if let Ok(channel) = serde_json::from_value(data.clone()) {
-                    self.event_handler.channel_create(channel).await;
+                    self.event_handler.channel_create(self.http.clone(), channel).await;
                 }
             }
             "CHANNEL_DELETE" => {
                 if let Ok(channel) = serde_json::from_value(data.clone()) {
-                    self.event_handler.channel_delete(channel).await;
+                    self.event_handler.channel_delete(self.http.clone(), channel).await;
                 }
             }
             "PRESENCE_UPDATE" => {
                 if let Ok(presence) = serde_json::from_value(data.clone()) {
-                    self.event_handler.presence_update(presence).await;
+                    self.event_handler.presence_update(self.http.clone(), presence).await;
                 }
             }
             "TYPING_START" => {
@@ -285,6 +288,7 @@ impl Gateway {
                     data["user_id"].as_str()
                 ) {
                     self.event_handler.typing_start(
+                        self.http.clone(),
                         channel_id.into(),
                         user_id.into()
                     ).await;
@@ -298,6 +302,7 @@ impl Gateway {
                     data["answer_id"].as_u64()
                 ) {
                     self.event_handler.poll_vote_add(
+                        self.http.clone(),
                         user_id.into(),
                         channel_id.into(),
                         message_id.into(),
@@ -313,6 +318,7 @@ impl Gateway {
                     data["answer_id"].as_u64()
                 ) {
                     self.event_handler.poll_vote_remove(
+                        self.http.clone(),
                         user_id.into(),
                         channel_id.into(),
                         message_id.into(),

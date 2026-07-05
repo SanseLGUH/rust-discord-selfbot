@@ -1,4 +1,5 @@
-use discord_selfbot::{Client, ClientBuilder, EventHandler, Message, User};
+use discord_selfbot::{ClientBuilder, EventHandler, User, Message};
+use discord_selfbot::http::HttpClient;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -6,15 +7,15 @@ struct MyEventHandler;
 
 #[async_trait]
 impl EventHandler for MyEventHandler {
-    async fn ready(&self, user: User) {
+    async fn ready(&self, _http: Arc<HttpClient>, user: User) {
         println!("{} is ready!", user.username);
     }
 
-    async fn message_create(&self, message: Message) {
+    async fn message_create(&self, http: Arc<HttpClient>, message: Message) {
         if message.content == "ping" {
-            println!("Received ping from: {}", message.author.username);
-            // Note: To reply, you need access to the HTTP client
-            // message.reply(&http, "pong").await?;
+            if let Err(e) = message.reply(&http, "pong").await {
+                eprintln!("Failed to reply: {:?}", e);
+            }
         }
     }
 }
@@ -26,9 +27,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .event_handler(handler)
         .build()
         .await?;
-
     client.listen().await?;
-
     Ok(())
 }
-

@@ -116,34 +116,30 @@ impl ClientBuilder {
     }
 
     pub async fn build(self) -> Result<Client> {
-        // Initialize tracing
         if std::env::var("RUST_LOG").is_err() {
             std::env::set_var("RUST_LOG", "info");
         }
-        
         tracing_subscriber::fmt::init();
 
         let token = self.token;
         let event_handler = self.event_handler.unwrap_or_else(|| Arc::new(DefaultEventHandler));
 
-        // Create HTTP client
+        // Create HTTP client FIRST
         let http = Arc::new(HttpClient::new(token.clone()));
 
-        // Verify token by fetching current user
         info!("Verifying token...");
         let user = http.get_current_user().await.map_err(|_| Error::InvalidToken)?;
         info!("Authenticated as: {}", user.tag());
 
-        // Create gateway
-        let gateway = Arc::new(Gateway::new(token, event_handler));
+        // Pass the SAME Arc<HttpClient> into Gateway
+        let gateway = Arc::new(Gateway::new(token, event_handler, http.clone()));
 
-        // Connect to gateway
         info!("Connecting to Discord Gateway...");
         gateway.connect().await?;
 
         let client = Client {
             gateway,
-            http,
+            http, // same Arc, no duplication
             user: Arc::new(RwLock::new(Some(user))),
         };
 
