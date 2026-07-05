@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tracing::{debug, info};
 
 pub struct HttpClient {
-    client: ReqwestClient,
+    pub client: ReqwestClient,
     token: String,
     base_url: String,
 }

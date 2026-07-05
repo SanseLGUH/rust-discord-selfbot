@@ -67,8 +67,8 @@ impl Gateway {
                 "token": self.token,
                 "properties": {
                     "$os": std::env::consts::OS,
-                    "$browser": "discord-selfbot-rust",
-                    "$device": "discord-selfbot-rust"
+                    "$browser": "croissant",
+                    "$device": "croissant"
                 },
                 "compress": false,
                 "large_threshold": 250,
